@@ -1,0 +1,296 @@
+Initial data setup:
+
+```bash
+# Download data:
+wgeg http://dy4e3l0miomia.cloudfront.net/datasets/listenbrainz.csv.zip
+
+# Unzip data:
+unzip listenbrainz.csv.zip
+
+# Separate header row:
+head -1 listenbrainz.csv > header.csv
+tail -n +2 listenbrainz.csv > listenbrainznohead.csv
+
+# Sort data by timestamp:
+sort listenbrainznohead.csv > listenbrainznoheadsorted.csv
+
+# Check number of rows:
+wc listenbrainznoheadsorted.csv
+##    52622968   317877720 10983140108 listenbrainznoheadsorted.csv
+
+# Count unique users:
+cut -d, -f2 listenbrainznoheadsorted.csv | sort | uniq | wc
+##     650     665    6216
+
+# Check most recent date:
+tail -1 listenbrainznoheadsorted.csv | cut -c1-23
+## 2017-09-22 07:17:34 UTC
+```
+
+Compare with data in Google BigQuery:
+
+```bigquerySQL
+SELECT COUNT(*) FROM `listenbrainz.listenbrainz.listen`
+-- 55275661 (at 12:07pm EST, when I ran the query)
+
+SELECT COUNT(DISTINCT user_name) FROM `listenbrainz.listenbrainz.listen`
+-- 691 (at time of query)
+
+SELECT listened_at FROM `listenbrainz.listenbrainz.listen`
+  ORDER BY listened_at DESC LIMIT 1
+-- 2017-09-30 16:10:26 UTC
+
+SELECT count(*) FROM `listenbrainz.listenbrainz.listen`
+  WHERE listened_at='1970-01-01 00:00:00 UTC'
+-- 132299
+```
+
+```bash
+# Check how many such times in the CSV:
+head -132300 listenbrainznoheadsorted.csv | cut -d, -f1 | sort | uniq -c | sort -n
+##      6 1991-01-01 00:00:01 UTC
+##    471 2005-02-13 10:15:05 UTC
+## 131823 1970-01-01 00:00:00 UTC
+
+# Suspiciously many simultaneous things; check out a bit more:
+head -900000 listenbrainznoheadsorted.csv | cut -d, -f1 | sort | uniq -c | sort -n | tail -20
+##   2811 2005-02-13 10:20:12 UTC
+##   3068 2005-02-13 10:20:11 UTC
+##   3068 2005-02-13 14:33:37 UTC
+##   3077 2005-02-14 11:48:06 UTC
+##   3377 2005-02-13 10:20:10 UTC
+##   3696 2005-02-13 10:15:05 UTC
+##   3849 2005-02-13 10:20:09 UTC
+##   4079 2005-02-13 12:05:38 UTC
+##   4296 2005-02-13 22:48:58 UTC
+##   4443 2005-02-13 10:20:08 UTC
+##   5130 2005-02-13 10:20:07 UTC
+##   5187 2005-02-13 14:33:36 UTC
+##   6050 2005-02-13 10:20:06 UTC
+##   7503 2005-02-13 10:20:05 UTC
+##   9582 2005-02-13 10:20:04 UTC
+##  13099 2005-02-13 10:20:03 UTC
+##  19313 2005-02-13 10:20:02 UTC
+##  33544 2005-02-13 10:20:01 UTC
+##  82137 2005-02-13 10:20:00 UTC
+## 131823 1970-01-01 00:00:00 UTC
+
+# And with the more recent data:
+tail -900000 listenbrainznoheadsorted.csv | cut -d, -f1 | sort | uniq -c | sort -n | tail -20
+##     10 2017-08-29 12:24:20 UTC
+##     11 2017-07-28 11:28:08 UTC
+##     12 2017-07-28 18:13:06 UTC
+##     12 2017-09-01 21:39:39 UTC
+##     13 2017-07-28 09:27:41 UTC
+##     13 2017-07-28 16:19:08 UTC
+##     13 2017-07-29 12:29:04 UTC
+##     14 2017-08-29 05:05:54 UTC
+##     14 2017-08-29 07:02:47 UTC
+##     15 2017-07-14 11:18:06 UTC
+##     15 2017-07-29 13:26:57 UTC
+##     16 2017-07-18 06:03:30 UTC
+##     16 2017-07-28 10:25:34 UTC
+##     18 2017-07-29 21:23:02 UTC
+##     20 2017-09-07 18:38:09 UTC
+##     20 2017-09-08 04:16:40 UTC
+##     21 2017-08-29 06:05:59 UTC
+##     23 2017-07-21 08:20:21 UTC
+##     27 2017-07-14 09:15:05 UTC
+##     40 2017-08-27 15:13:18 UTC
+
+grep '2017-08-27 15:13:18 UTC' listenbrainznoheadsorted.csv | head
+## (all from user 'Balinsky')
+```
+
+Check for similar phenomenon over all data on BigQuery:
+
+```bigquerySQL
+#standardSQL
+SELECT listened_at, count(*) as count
+  FROM `listenbrainz.listenbrainz.listen`
+  GROUP BY listened_at
+  ORDER BY count DESC
+  LIMIT 500
+-- Same thing; looks like dumping on 2005-02-13/14,
+-- but also multiple records can happen on a day.
+```
+
+```bash
+# General "usage" by year:
+cat listenbrainznoheadsorted.csv | cut -c1-4 | uniq -c
+##  131823 1970
+##       6 1991
+## 1349496 2005
+## 2143354 2006
+## 2848570 2007
+## 3228931 2008
+## 3642870 2009
+## 3949508 2010
+## 4269153 2011
+## 4621858 2012
+## 4804006 2013
+## 5184467 2014
+## 5535906 2015
+## 6163500 2016
+## 4749520 2017
+
+# Curious about duplicates; are there any?
+uniq listenbrainznoheadsorted.csv | wc
+## 52622967 317877714 10983139897
+
+# There is exactly one duplicate! What is it?
+uniq -c listenbrainznoheadsorted.csv | sort -n | tail -1
+##       2 2013-09-03 04:22:08 UTC,MPogoda,72f57a76-0423-4e43-aea6-9df7e49915e7,Димна Суміш,"",229b4706-202d-4f80-a332-6317b706f8e7,"","",b4d9648e-7953-4611-81ab-f
+ac0af6206a8,Повмирай зі мною,"",""
+
+# Okay; remove it.
+uniq listenbrainznoheadsorted.csv > data.csv
+# Just removing one line; doesn't substantially change anything above.
+```
+
+Let's do some work in Python:
+
+```python
+import csv
+
+with open('header.csv') as f:
+    reader = csv.reader(f)
+    rows = [row for row in reader]
+    header = rows[0]
+
+# Ensure reading every row as the same number of columns:
+import collections
+
+num_recs = collections.Counter()
+with open('data.csv') as f:
+    reader = csv.reader(f)
+    for row in reader:
+        num_recs.update([len(row)])
+
+num_recs
+## Counter({12: 52622967})
+
+# What columns have missing (blank) values?
+missings = {key: 0 for key in header}
+with open('data.csv') as f:
+    reader = csv.reader(f)
+    for row in reader:
+        for i in range(len(header)):
+            if row[i] == '':
+                missings[header[i]] += 1
+
+missings
+## {'artist_mbids': 52612029,
+##  'artist_msid': 0,
+##  'artist_name': 0,
+##  'listened_at': 0,
+##  'recording_mbid': 17697188,
+##  'recording_msid': 0,
+##  'release_mbid': 52613441,
+##  'release_msid': 6698104,
+##  'release_name': 52622967,
+##  'tags': 52618311,
+##  'track_name': 0,
+##  'user_name': 0}
+
+# How many records _have_ tags?
+52622967 - 52618311
+## 4656
+
+# What is that as a percentage?
+100 * 4656. / 52622976
+## 0.008847847746783263
+
+# Monthly active users? (by calendar month)
+years = range(2005, 2018)
+months = range(1, 13)
+year_months = ['{}-{:02d}'.format(year, month)
+               for year in years for month in months]
+tracker = {key: set() for key in year_months}
+with open('data.csv') as f:
+    reader = csv.reader(f)
+    for row in reader:
+        year_month = row[0][:7]
+        if year_month not in tracker:
+            continue
+        tracker[year_month].add(row[1])
+counts = [len(tracker[month]) for month in sorted(tracker.keys())]
+
+import matplotlib.pyplot as plt
+plt.plot(counts)
+## Fairly linear plot from under 100 to just over 500.
+
+max(counts)
+## 548
+
+# In 2005, and in 2017:
+counts[:12]
+## [0, 113, 46, 51, 61, 67, 72, 73, 81, 79, 76, 87]
+counts[-12:]
+## [494, 500, 505, 513, 516, 523, 548, 428, 212, 0, 0, 0]
+
+# Mean monthly active users for last three months:
+(523 + 548 + 428) / 3.
+## 499.6666666666667
+
+# What percentage of total users ever?
+500. / 650
+## 0.7692307692307693
+
+# How skewed is usage?
+with open('data.csv') as f:
+    reader = csv.reader(f)
+    users = collections.Counter()
+    for row in reader:
+        users.update([row[1]])
+
+import numpy as np
+counts = np.array([count for user, count in users.most_common()])
+cumsum = counts.cumsum()
+frac = cumsum / float(counts.sum())
+plt.plot(frac)
+## Looks something like the bottom left quadrant of y = -x^2.
+
+frac[65-1:65+1]
+## array([ 0.40681138,  0.41056011])
+
+frac[65*2-1:65*2+1]
+## array([ 0.60741845,  0.60991181])
+
+frac[65*3-1:65*3+1]
+## array([ 0.74019422,  0.74186729])
+
+users.most_common(5)
+[('dak180', 1218225),
+ ('CatCat', 1196962),
+ ('lb_test_1', 1182035),
+ ('Svarthjelm', 856364),
+ ('Silent Singer', 461682)]
+
+# Do users listen to the same artists?
+artists = {}
+with open('data.csv') as f:
+    reader = csv.reader(f)
+    for row in reader:
+        artist = row[3]
+        user = row[1]
+        artists.setdefault(artist, set()).add(user)
+
+len(artists)
+## 576500
+
+artist_counts = sorted([(len(users), artist)
+                        for artist, users in artists.iteritems()],
+                       reverse=True)
+artist_counts[:10]
+## [(456, 'Radiohead'),
+##  (436, 'David Bowie'),
+##  (431, 'Daft Punk'),
+##  (430, 'Pink Floyd'),
+##  (420, 'The Beatles'),
+##  (413, 'Nirvana'),
+##  (407, 'Red Hot Chili Peppers'),
+##  (406, 'Queen'),
+##  (401, 'Gorillaz'),
+##  (399, 'Coldplay')]
+```

@@ -1,0 +1,361 @@
+
+
+```bash
+# initial setup
+
+# check RAM
+free -mh
+## 240 G
+# check CPUs
+nproc
+## 32
+
+sudo mkfs.ext4 /dev/xvdb
+sudo mkfs.ext4 /dev/xvdc
+mkdir disk1
+sudo mount /dev/xvdb disk1
+mkdir disk2
+sudo mount /dev/xvdc disk2
+df -h
+## 280 G in each; probably I'll just use disk1
+chown ubuntu disk1
+chown ubuntu disk2
+
+# set up Jupyter notebook to be accessible remotely
+jupyter notebook --generate-config
+nano .jupyter/jupyter_notebook_config.py
+# set 'c.NotebookApp.ip' to '*'
+jupyter notebook
+
+cd disk1
+mkdir gdelt
+mkdir gkg
+aws configure
+time aws s3 sync s3://texata-round2/gdelt/events gdelt
+# downloaded in under one minute
+time aws s3 sync s3://texata-round2/gdelt/gkg gkg
+# downloaded in under four minutes
+
+# wrote `manager.py`, `runner.py`, `rowcount.py`
+time python manager.py ./runner.py rowcount.py disk1/gdelt/ 16
+## {'total': 203994267}
+## finishes in 3:38
+mv rowcount.py.pkl 01.pkl
+time python manager.py ./runner.py rowcount.py disk1/gdelt/ 32
+## same result
+## finishes in 2m27
+mv rowcount.py.pkl 02.pkl
+time python manager.py ./runner.py rowcount.py disk1/gdelt/ 64
+## finishes in 2m27
+mv rowcount.py.pkl 03.pkl
+time python manager.py ./runner.py rowcount.py disk1/gkg/ 32
+## {'total': 143262461}
+## finishes in 3m15
+mv rowcount.py.pkl 04.pkl
+
+time python manager.py ./runner.py reclen.py disk1/gdelt/ 32
+## {58: 203994267}
+mv reclen.py.pkl 05.pkl
+time python manager.py ./runner.py reclen.py disk1/gkg/ 32
+## {11: 143262461}
+mv reclen.py.pkl 06.pkl
+
+# I'll focus on Venezuela (VE) and Iraq (IZ); they seem interesting.
+# I'm using `ActionGeo_CountryCode` to get
+# the country _where something happened_.
+# And I'll use `QuadClass` which is a "material conflict" when "4";
+# this is a rough proxy for instability.
+# `FractionDate` will do for time.
+# created ve4.py and iz4.py
+time python manager.py ./runner.py ve4.py disk1/gdelt/ 32
+time python manager.py ./runner.py iz4.py disk1/gdelt/ 32
+```
+
+```python
+import pickle
+import matplotlib.pyplot as plt
+%matplotlib inline
+with open('ve4.py.pkl', 'rb') as f:
+    ve4 = pickle.load(f)
+ve4 = sorted(ve4.items())
+ve4 = [count for date, count in ve4 if 2013 <= date]
+plt.plot(ve4, 'o')
+with open('iz4.py.pkl', 'rb') as f:
+    iz4 = pickle.load(f)
+iz4 = sorted(iz4.items())
+iz4 = [count for date, count in iz4 if 2013 <= date]
+plt.plot(ve4, 'o')
+```
+
+Now I have time series for Venezuela and Iraq, starting in 2013. There are some assumptions in there that should really be checked but will do for now. The plots show increasing discontinuous spiking over time, with some extreme outliers.
+
+With the data in this format, I can return to work on the predictive modeling side after I have some progress on the other situations.
+
+```bash
+# created vePersons.py, izPersons.py, veOrgs.py, izOrgs.py
+time python manager.py ./runner.py vePersons.py disk1/gkg/ 32
+time python manager.py ./runner.py izPersons.py disk1/gkg/ 32
+time python manager.py ./runner.py veOrgs.py disk1/gkg/ 32
+time python manager.py ./runner.py izOrgs.py disk1/gkg/ 32
+```
+
+```python
+with open('vePersons.py.pkl', 'rb') as f:
+    vePersons = pickle.load(f)
+len(vePersons)
+## 808917
+vePersons = [(count, name) for name, count in vePersons.items()]
+vePersons = sorted(vePersons, reverse=True)
+vePersons[:20]
+## [(156263, 'nicolas maduro'),
+##  (72061, ''),
+##  (70439, 'hugo chavez'),
+##  (67883, 'donald trump'),
+##  (54580, 'barack obama'),
+##  (29552, 'hillary clinton'),
+##  (22701, 'los angeles'),
+##  (21686, 'vladimir putin'),
+##  (18387, 'raul castro'),
+##  (17067, 'leopoldo lopez'),
+##  (16912, 'fidel castro'),
+##  (16524, 'pope francis'),
+##  (16432, 'juan manuel santos'),
+##  (15863, 'john kerry'),
+##  (15710, 'henrique capriles'),
+##  (14399, 'dilma rousseff'),
+##  (13065, 'lionel messi'),
+##  (11713, 'copa america'),
+##  (11273, 'george w bush'),
+##  (11186, 'delcy rodriguez')]
+
+with open('izPersons.py.pkl', 'rb') as f:
+    izPersons = pickle.load(f)
+len(izPersons)
+## 1969024
+izPersons = [(count, name) for name, count in izPersons.items()]
+izPersons = sorted(izPersons, reverse=True)
+izPersons[:20]
+## [(476766, 'barack obama'),
+##  (415015, 'donald trump'),
+##  (304934, ''),
+##  (266661, 'hillary clinton'),
+##  (169481, 'george w bush'),
+##  (154471, 'vladimir putin'),
+##  (151227, 'bashar al-assad'),
+##  (124380, 'haider al-abadi'),
+##  (123792, 'john kerry'),
+##  (115542, 'bashar assad'),
+##  (99643, 'tayyip erdogan'),
+##  (84678, 'bernie sanders'),
+##  (75562, 'angela merkel'),
+##  (75027, 'john mccain'),
+##  (70878, 'francois hollande'),
+##  (70445, 'los angeles'),
+##  (69408, 'abu bakr al-baghdadi'),
+##  (68235, 'david cameron'),
+##  (67524, 'saddam hussein'),
+##  (61610, 'ted cruz')]
+
+with open('veOrgs.py.pkl', 'rb') as f:
+    veOrgs = pickle.load(f)
+len(veOrgs)
+## 458730
+veOrgs = [(count, name) for name, count in veOrgs.items()]
+veOrgs = sorted(veOrgs, reverse=True)
+veOrgs[:20]
+## [(236218, 'united states'),
+##  (99290, ''),
+##  (76880, 'twitter'),
+##  (76345, 'reuters'),
+##  (75105, 'associated press'),
+##  (51669, 'united nations'),
+##  (49219, 'white house'),
+##  (44276, 'supreme court'),
+##  (39970, 'national assembly'),
+##  (38006, 'facebook'),
+##  (37360, 'european union'),
+##  (26097, 'cnn'),
+##  (19732, 'champions league'),
+##  (19324, 'pdvsa'),
+##  (18989, 'new york times'),
+##  (17555, 'organization of american states'),
+##  (15552, 'international monetary fund'),
+##  (15492, 'bloomberg'),
+##  (15430, 'organization of the petroleum exporting countries'),
+##  (14948, 'security council')]
+
+with open('izOrgs.py.pkl', 'rb') as f:
+    izOrgs = pickle.load(f)
+len(izOrgs)
+## 1099910
+izOrgs = [(count, name) for name, count in izOrgs.items()]
+izOrgs = sorted(izOrgs, reverse=True)
+izOrgs[:20]
+## [(1124941, 'united states'),
+##  (446220, 'associated press'),
+##  (419138, ''),
+##  (396828, 'white house'),
+##  (298599, 'reuters'),
+##  (275733, 'twitter'),
+##  (269444, 'united nations'),
+##  (209740, 'european union'),
+##  (201019, 'facebook'),
+##  (187394, 'cnn'),
+##  (128294, 'new york times'),
+##  (92226, 'washington post'),
+##  (92221, 'supreme court'),
+##  (64162, 'google'),
+##  (57522, 'justice department'),
+##  (57046, 'republican party'),
+##  (54806, 'democratic party'),
+##  (54268, 'un security council'),
+##  (51812, 'u s army'),
+##  (51588, 'security council')]
+```
+
+Downloaded `OPEC-ORB.csv` from Quandl.
+
+```python
+import csv
+
+with open('OPEC-ORB.csv') as f:
+    reader = csv.reader(f)
+    opec = [line for line in reader]
+
+opec.pop(0)
+## ['Date', 'Value']
+
+opec = sorted(opec)
+opec = [float(value) for date, value in opec]
+opec = opec[-len(ve4):]
+
+# Now I have matched daily time series for OPEC prices
+# and material conflict in Venezuela.
+
+plt.plot(opec, 'o')
+# much smoother than the material conflict data
+
+import numpy as np
+np.corrcoef(opec, ve4)
+## -0.38283743
+np.corrcoef(opec, iz4)
+-0.3798749
+```
+
+Goldstein ranking score?
+
+```python
+import csv
+
+with open('20171008.export.csv') as f:
+    reader = csv.reader(f, delimiter='\t')
+    gdelt = [line for line in reader]
+
+with open('20171008.gkg_.csv') as f:
+    reader = csv.reader(f, delimiter='\t')
+    gkg = [line for line in reader]
+
+
+import gzip
+
+with gzip.open('20141001.export.CSV.gz', 'rb') as f:
+    reader = csv.reader(f, delimiter='\t')
+    gdelt = [line for line in reader]
+
+
+import zipfile
+
+with open() as f:
+
+zf = zipfile.ZipFile('20171012.export.CSV.zip')
+names = zf.namelist()
+assert len(names) == 1
+
+contents = zf.read(names[0])
+
+with zf.open(names[0]) as f:
+    reader = csv.reader(f, delimiter='\t')
+    gdelt = [line for line in reader]
+
+gdelt_fields = [
+    'GlobalEventID', 'Day', 'MonthYear', 'Year', 'FractionDate',
+    'Actor1Code', 'Actor1Name', 'Actor1CountryCode', 'Actor1KnownGroupCode',
+    'Actor1EthnicCode', 'Actor1Religion1Code', 'Actor1Religion2Code',
+    'Actor1Type1Code', 'Actor1Type2Code', 'Actor1Type3Code',
+    'Actor2Code', 'Actor2Name', 'Actor2CountryCode', 'Actor2KnownGroupCode',
+    'Actor2EthnicCode', 'Actor2Religion1Code', 'Actor2Religion2Code',
+    'Actor2Type1Code', 'Actor2Type2Code', 'Actor2Type3Code',
+    'IsRootEvent', 'EventCode', 'EventBaseCode', 'EventRootCode', 'QuadClass',
+    'GoldsteinScale', 'NumMentions', 'NumSources', 'NumArticles', 'AvgTone',
+    'Actor1Geo_Type', 'Actor1Geo_Fullname', 'Actor1Geo_CountryCode',
+    'Actor1Geo_ADM1Code', 'Actor1Geo_Lat', 'Actor1Geo_Long',
+    'Actor1Geo_FeatureID',
+    'Actor2Geo_Type', 'Actor2Geo_Fullname', 'Actor2Geo_CountryCode',
+    'Actor2Geo_ADM1Code', 'Actor2Geo_Lat', 'Actor2Geo_Long',
+    'Actor2Geo_FeatureID',
+    'ActionGeo_Type', 'ActionGeo_Fullname', 'ActionGeo_CountryCode',
+    'ActionGeo_ADM1Code', 'ActionGeo_Lat', 'ActionGeo_Long',
+    'ActionGeo_FeatureID',
+    'DATEADDED', 'SOURCEURL']
+
+gkg_fields = [
+    'DATE', 'NUMARTS', 'COUNTS',
+    'THEMES', 'LOCATIONS', 'PERSONS', 'ORGANIZATIONS',
+    'TONE', 'CAMEOEVENTIDS', 'SOURCES', 'SOURCEURLS']
+```
+
+what EventCodes are interesting?
+
+idea: notification for topic/popularity/company?
+
+
+
+AKIAJ5762O7HAIJUY6UQ
+hp7TfQsFAixC8pEhPjTCm8H44c8MFtKB1bi39kpk
+
+
+
+Analysis Methodology: A description of the approach that you took and the methodology you used in your analysis with a rationale on why you thought your approach would be the best use of time. [15 marks]
+
+For my computation, I decided to use an AWS (Amazon Web Services) EC2 (Elastic Compute Cloud) machine with the "Deep Learning AMI Ubuntu Version" version "2.3_Sep2017" AMI (Amazon Machine Image) on an "r3.8xlarge" instance with 32 vCPUs (virtual CPUs) rated at 104 ECUs (EC2 Compute Units). This is a memory-optimized configuration with 244 GB of RAM, which means I'll be able to put a good deal of data into memory at the same time. The AMI has many deep learning frameworks installed, but I'm mostly interested in using standard scientific Python tools including Jupyter notebooks, which is why I've gone for an EC2 machine that doesn't have any GPUs but does have pretty many standard CPU cores. I could have gotten a machine with higher specs, but this one is a good compromise that still has 640 GB of solid-state disk space for quick reading and writing of data.
+
+The GDELT data is all split into reasonably small files, which makes it a natural candidate for doing map-reduce directly. It will be convenient for me to stay in Python, so I'll write up my own one-machine ad hoc map-reduce implementation targeting the GDELT format directly. I'm not sure whether it will be faster to un-gzip all the files and then read their uncompressed form or to read the gzipped files and uncompress them on the fly with Python. I'll start with the Python unzipping approach. I could also try loading everything into memory, but single-threaded evaluation seems likely to be slower than breaking everything up.
+
+There are three fairly unique business situations to work on, and I'd like to achieve some results for all three. I'll take a spiral approach, beginning with the simplest possible methodology, and then as time allows returning to earlier situations.
+
+For the time series analysis situation, I'll start by extracting time series that describe material conflicts in one or more countries of interest, using the GDELT events data. A visualization should reveal something about the nature of patterns, and set up the application of time series modeling techniques.
+
+For the network analysis situation, I'll identify entities commonly associated with oil and gas markets, using the GDELT Global Knowledge Graph. This can start with a simple histogramming of associated entities before more sophisticated graph analysis.
+
+For the inference situation, I'll try to predict the BRENT and OPEC time series based on time series extracted from GDELT event data, as in the time series analysis situation.
+
+I may simplify the modeling task to a binary (increase or decrease) prediction problem in order to get a quick first approach built.
+
+
+Analysis Outputs: A scratchpad of your analysis, covering your observations on the data and the potential significance of your results. All findings and interesting insights should go here. [20 marks]
+
+Finding 1: Data row-count is confirmed for the GDELT event data: there are 203,994,267 rows. This is not surprising, but it's good to check that things are working as expected, and this provides some reassurance that the data was received properly and is being processed properly.
+
+Finding 2: Data row-count is _not_ confirmed for the GDELT Global Knowledge Graph data: the documentation says there should be 143,466,985 rows, but the actual data as received only contains 143,262,461 rows. For the moment I will not take action on this, but it could suggest that there should be a conversation with the data provider to make sure everyone is on the same page. One hypothesis is that the data sometimes contains newline characters; if the sender of the data checked number of newline characters rather than number of records, that could explain the discrepancy. My reading method consistently discovers 11 fields per record in the data, suggesting that it is reading records properly.
+
+Finding 3: My single-machine Python-based map-reduce implementation is acceptable for processing this dataset. Scaling is not quite linear with the number of processes, but does level off at number of cores of the machine as expected. The approach allows me to do a full pass through either the event or knowledge graph data in under three minutes. No doubt a specialized framework on a cluster could provide even faster processing, but for today this speed will be sufficient.
+
+Finding 4: The time series of material conflict events in a country over time can be have very sharp spikes, as in the cases of Venezuela and Iraq in particular, which have seen increasingly many such events over time. As the most extreme changes are almost by definition outliers, it may be that traditional time series approaches are not appropriate; it may really make sense to cast the problem as predicting discrete events.
+
+Finding 5: The knowledge graph dataset is very inclusive: there are very many people and organizations mentioned. There are 808,917 distinct persons associated with Venezuela alone. While I'm focusing on the most prevalent individuals and organizations, it may be that future work could benefit from working with the long tail and perhaps implementing more disambiguation for rarer entries.
+
+Finding 6: The knowledge graph effectively identifies individuals associated with countries of interest. It makes sense that Nicolas Maduro should be the first name to come up for Venezuela, and working down the list of associated people, a company might identify those it could work with. Similarly, the knowledge graph effectively finds organizations associated with a country of interest, correctly showing that the US Army is more related to Iraq than Venezuela over the period under consideration. Focusing on time windows of interest and change in associations over time is an interesting direction to consider.
+
+Finding 7: OPEC oil prices are anti-correlated with the count of material conflict events in both Venezuela and Iraq since 2013, with correlation coefficients of -0.38 in both cases. This suggests a relationship, but care should be taken in the interpretation since the overall structure of the data is a broadly negative trend in oil price and broadly increasing trend in reported material conflict events. More sophisticated modeling approaches may find more useful short-range structure in the relationships.
+
+
+Business Case: A summary of relevant insights into a cohesive story on monetization opportunities using the data along with potentially other open-source data. [25 marks]
+
+In the "Analysis Outputs" section, I've shown that we can extract time series from GDELT events data representing conflict on a per-nation basis, and that the structure of that data suggests it might be amenable to modeling to predict catastrophic events, though predicting outliers is not necessarily easy. In addition to interest for those in futures markets, we could provide benefit to a wide range of businesses including insurers and anyone evaluating locations for investment. The exact same nation-level analysis could be applied to US states or cities, enhanced with per-capita and other controls, to produce a useful tool for evaluating future prospects. Amazon is famously in the process of deciding where to base a new North American headquarters, and the kind of information we can provide could be very useful to them.
+
+I also showed that the GDELT Global Knowledge Graph is an effective source for identifying influencers and more broadly any individuals and organizations affiliated with other areas, persons, or organizations. This can easily inform analyst work with a focus on the oil industry, but the potential application is much broader. Every company, individual, politician, and locality is interested in what they become associated with in the media. In an era obsessed with news, both real and fake, people want to know and get ahead of media coverage. With sufficient development, potential applications could even include _detecting_ fake news sources and patterns of information dissemination.
+
+Finally, I showed that there is a simple long-term pattern in the relationship between OPEC oil prices and material conflict events in Venezuela and Iraq. This may reflect a real macro reality in the market. To be more useful to those interested in profiting from the behavior of markets, further work will need to be done, but the initial results today are promising. GDELT handles a lot of the difficulties of natural language processing, giving us a more direct path to learning from raw news data. There are many ways to process this information, and certainly not all of it is reflected in the markets yet.
+
+
+Code: Upload the code you wrote to produce the outcome. [20 marks]

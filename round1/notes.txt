@@ -1,0 +1,52 @@
+1. Analysis Methodology: Provide a description of the approach that you took and the methodology you used in your analysis with a rationale on why you thought your approach would be the best use of time. [15 marks]
+
+Since the dataset is large but not too large to fit in memory, I was free to use a variety of tools. I experimented briefly with BigQuery to see how it compared to the provided CSV file, and then settled on using the CSV file so that my results would be easily replicable.
+
+As I was unfamiliar with the dataset, I took a descriptive approach using shell tools and Python. My viewpoint was to consider the ListenBrainz users as the customers of a hypothetical company, so I was interested in how many users were active and related metrics.
+
+I didn't think I'd have enough time to develop a full recommendation engine, for example, so I tried to identify what might be possible by understanding what's in the data.
+
+
+2. Analysis Outputs: Provide a scratchpad of your analysis, covering your observations on the data and the potential significance of your results. All findings and interesting insights should go here. [20 marks]
+
+Finding 1: Duplicate rows are very rare, but not nonexistent. In the CSV file, there was one duplication among 52,622,968 rows, bringing the actual row count to 52,622,967. The data can be easily de-duped, or this can be skipped; the difference will be very small, and the one duplicate may even be "correct" in light of Finding 4.
+
+Finding 2: Results may change as new data comes in. The BigQuery source is accumulating new data on a continual basis, so already it has 2.6 million more records than the CSV. My analysis is done with the CSV file for consistency, and could be repeated or updated with new data (or directly on BigQuery).
+
+Finding 3: The "listened_at" timestamps have some likely incorrect, possibly "default" values. In the CSV there are 131,823 records dated the beginning of 1970 (the Unix epoch) which likely means their actual date was missing. BigQuery has more records like this, indicating that new records are still being added to the system with this incorrect date. Further, very many records have identical timestamps on 2005-02-13 and 2005-02-14; for example, there are 82,137 records with the timestamp "2005-02-13 10:20:00 UTC". Analysis can be done with more recent data; any analysis likely should not rely on "listened_at" times before 2005-02-15.
+
+Finding 4: The "listened_at" timestamps may not represent when a song was listened to. There are many cases where the same user has many listens reported for the same "listened_at" time. It may be that "listened_at" represents the time that a batch of the user's data was entered into the system, or just that data is entered in batches that all have the same "listened_at" time. Orderings of listens cannot be determined when the "listened_at" times are identical; a change to the system might remove this problem.
+
+Finding 5: There are very few users in the system. By unique user name, there are 650 users in the CSV data.
+
+Finding 6: The system is very "sticky" - users keep using the system. Considering monthly active users, the mean over the last three full months has been 500, or 77% of the total users to ever use the system. That's an incredibly good retention rate.
+
+Finding 7: However, growth in monthly active users has been roughly linear since 2005.
+
+Finding 8: A few users are responsible for most of the data. It isn't exactly an 80/20 Pareto, but 20% of users are responsible for 60% of listens, and 30% are responsible for 74% of listens. Three users are responsible for over one million lessons each. Analysis should keep this in mind.
+
+Finding 9: Very few records have tags that provide genre information and the like. Out of 52,622,967 records, only 4,656 have "tags" data (under 0.01%). To get meaningful results for genre and so on we'd likely want to find a way to merge on more information by some of the other identifiers.
+
+Finding 10: Identifiers may not be ready for prime time. All MusicBrainz ID fields are sometimes missing. The MessyBrainz ID fields are complete for two out of three fields, but more work would need to be done to walk them all together. For quick interpretation, I'm going to use the human-readable names for now.
+
+Finding 11: By artist names, there are 576,500 unique artists in the data. Using simply whether a user has ever listened to an artist as a measure of popularity (in light of Finding 8) the most popular five artists are Radiohead, David Bowie, Daft Punk, Pink Floyd, and The Beatles, which all appear in more than 64% of users' histories. I think this says something about the type of users who are on the platform, and suggests that we might be able to try to infer things about user demographics based on their listen histories if we added some labeled data. We could also use the user-artist matrix to develop recommendation systems by collaborative filtering and the like.
+
+
+3. Business Case: Provide a summary of relevant insights into a cohesive story on monetization opportunities using the data along with potentially other open-source data. [15 marks]
+
+With well under 1,000 total active users, we may want to consider growing the user base. User acquisition has been basically linear since 2005. Could we advertise the service or add social aspects to encourage growth? Once they start, users usually stay with the service, so we know they value it: can we help others see what current users value? We can also add features or monetize in other directions as described below.
+
+Some artists are popular across very many users, but very many artists are popular with just small subsets of users. We should be able to add recommendation features to help users find new artists that they'll enjoy.
+
+We could also partner with artists to help them reach users who are likely to enjoy their work.
+
+The artists that users listen to can tell us something about them in terms of demographics that advertisers may find valuable. By adding some data we should be able to match advertisers to users quite well.
+
+The ListenBrainz dataset represents a small set of users, but most users keep using the service and this includes some very committed listeners who produce a lot of data. The small set of users also includes some very heavy users who may be music officionados or influencers. We may be able to work directly with the most active users to find or influence new trends in music.
+
+Since we get frequent time-stamped data from some users, we can also form a kind of internet usage profile for them. This could be useful for monitoring efforts, should law enforcement need to know about an individual's activity, for example.
+
+We could also automatically create playlists based on user listening habits, which could provide a kind of automatic DJ service.
+
+
+4. Code: Upload the code you wrote to produce the outcome. If your code consists of multiple files or folders, please zip your whole project and upload the zip file. Your code will be reviewed for technical correctness, efficiency and readability. [30 marks]
