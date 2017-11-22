@@ -1,0 +1,76 @@
+
+AWS:
+
+ * N. Virginia!
+ * "Deep Learning AMI Ubuntu Version"
+     * version "2.3_Sep2017"
+ * "r3.8xlarge" instance: 32 vCPUs, 244 GB RAM, 2x320 GB SSD, $2.66
+ * "x1.16xlarge" instance: 64 vCPUs, 976 GB RAM, 1x1920 GB SSD, $6.70
+ * "x1.32xlarge" instance: 128 vCPUs, 1952 GB RAM, 2x1920 GB SSD, $13.34
+ * "x1e.32xlarge" instance: 128 vCPUs, 3904 GB RAM, 2x1920 GB SSD, $26.69
+
+```bash
+# check RAM
+free -mh
+
+# check CPUs
+nproc
+
+df -h  # see what's already mounted
+lsblk  # find out the /dev/ paths of devices, like say /dev/xvdb
+mkfs.ext4 /dev/xvdb  # format a disk using the Ext4 filesystem
+mkdir disk  # make a mount point
+mount /dev/xvdb disk  # mount the disk
+df -h  # check for success and size of the new disk
+chown ubuntu disk1  # make the disk accessible to the admin account
+
+aws configure
+# Access Key ID:
+# Secret Access Key:
+
+time aws s3 sync s3://texata-round2/gdelt/events gdelt
+
+# set up Jupyter notebook to be accessible remotely
+jupyter notebook --generate-config
+nano .jupyter/jupyter_notebook_config.py
+# set 'c.NotebookApp.ip' to '*'
+# https://github.com/ipython/ipyparallel
+
+pip install ipyparallel
+ipcluster nbextension enable
+
+jupyter notebook
+# start cluster in cluster tab
+```
+
+```python
+import ipyparallel as ipp
+
+rc = ipp.Client()
+dview = rc[:]
+
+data = range(128)
+dview.scatter('x', data)
+
+ar = dview.apply(lambda: sum(x))
+ar.done()
+sum(ar.get())
+
+with rc[:].sync_imports():
+    import numpy
+
+%px a = numpy.random.rand(2,2)
+%px numpy.linalg.eigvals(a)
+```
+
+```python
+def combine(list_of_dicts, combiner=lambda x, y: x+y):
+    result = dict()
+    for this_dict in list_of_dicts:
+        for key, value in this_dict.iteritems():
+            if key not in result:
+                result[key] = value
+            else:
+                result[key] = combiner(result[key], value)
+    return result
+```
